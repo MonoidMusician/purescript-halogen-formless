@@ -14,6 +14,7 @@ import Record as Record
 import Record.Builder (Builder)
 import Record.Builder as Builder
 import Type.Data.RowList (RLProxy(..))
+import Type.Row (class ListToRow)
 
 -----
 -- Types
@@ -429,11 +430,13 @@ instance sequenceRecordCons ::
 instance sequenceRecordNil :: Applicative m => SequenceRecord RL.Nil row () () m where
   sequenceRecordImpl _ _ = pure identity
 
+test = applyRecord <@> { a: identity show }
+
 -- | A class to reduce the type variables required to use applyRecord
 class ApplyRecord (io :: # Type) (i :: # Type) (o :: # Type)
   | io -> i o
   , i -> io o
-  , o -> i io
+  , o -> io i
   where
   applyRecord :: Record io -> Record i -> Record o
 
@@ -441,7 +444,10 @@ instance applyRecordImpl
   :: ( RL.RowToList io lio
      , RL.RowToList i li
      , RL.RowToList o lo
-     , ApplyRowList lio li lo io i () o
+     , ListToRow lio io
+     , ListToRow li i
+     , ListToRow lo o
+     , ApplyRowList lio li lo io i io i o
      )
   => ApplyRecord io i o where
   applyRecord io i = Builder.build (builder io i) {}
@@ -456,37 +462,53 @@ instance applyRecordImpl
 -- | Applies a record of functions to a record of input values to produce
 -- | a record of outputs.
 class
+  ( RL.RowToList ior io
+  , RL.RowToList ir i
+  , RL.RowToList or o
+  , ListToRow io ior
+  , ListToRow i ir
+  , ListToRow o or
+  ) <=
   ApplyRowList
     (io :: RL.RowList)
     (i :: RL.RowList)
     (o :: RL.RowList)
     (ior :: # Type)
     (ir :: # Type)
-    (fir :: # Type)
+    (iorf :: # Type)
+    (irf :: # Type)
     (or :: # Type)
-    | o -> i io ior ir fir or
-    , i -> io o ior ir fir or
-    , io -> i o ior ir fir or
+    | io -> i o ior ir or
+    , i -> io o ior ir or
+    , o -> io i ior ir or
   where
   applyRowList
     :: RLProxy io
     -> RLProxy i
     -> RLProxy o
-    -> Record ior
-    -> Record ir
-    -> Builder (Record fir) (Record or)
+    -> Record iorf
+    -> Record irf
+    -> Builder {} (Record or)
 
-instance applyRowListNil :: ApplyRowList RL.Nil RL.Nil RL.Nil ior io () () where
+instance applyRowListNil :: ApplyRowList RL.Nil RL.Nil RL.Nil () () iorf irf () where
   applyRowList _ _ _ _ _ = identity
 
 instance applyRowListCons
-  :: ( Row.Cons k (i -> o) tior ior
+  :: ( Row.Cons k (i -> o) unused1 iorf
+     , Row.Cons k i unused2 irf
+     , Row.Cons k (i -> o) tior ior
      , Row.Cons k i tir ir
      , Row.Cons k o tor or
      , Row.Lacks k tior
      , Row.Lacks k tir
      , Row.Lacks k tor
-     , ApplyRowList tio ti to ior ir fir tor
+     , RL.RowToList ior (RL.Cons k (i -> o) tio)
+     , RL.RowToList ir (RL.Cons k i ti)
+     , RL.RowToList or (RL.Cons k o to)
+     , ListToRow (RL.Cons k (i -> o) tio) ior
+     , ListToRow (RL.Cons k i ti) ir
+     , ListToRow (RL.Cons k o to) or
+     , ApplyRowList tio ti to tior tir iorf irf tor
      , IsSymbol k
      )
   => ApplyRowList
@@ -495,7 +517,8 @@ instance applyRowListCons
        (RL.Cons k o to)
        ior
        ir
-       fir
+       iorf
+       irf
        or
   where
     applyRowList io i o ior ir =
@@ -512,7 +535,7 @@ instance applyRowListCons
         fir :: Builder { | tor } { | or }
         fir = Builder.insert _key (f x)
 
-        tor :: Builder { | fir } { | tor }
+        tor :: Builder {} { | tor }
         tor = applyRowList (rltail io) (rltail i) (rltail o) ior ir
 
 
