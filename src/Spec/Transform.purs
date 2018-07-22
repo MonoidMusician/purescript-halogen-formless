@@ -35,7 +35,7 @@ import Type.Row (RLProxy(..), RProxy)
 unwrapOutput
   :: ∀ row xs row' form
    . RL.RowToList row xs
-  => Internal.UnwrapRecord xs row () row'
+  => Internal.UnwrapRecord xs row row'
   => Newtype (form OutputField) (Record row)
   => form OutputField
   -> Record row'
@@ -58,7 +58,7 @@ unwrapOutput = Internal.unwrapRecord <<< unwrap
 mkFormSpec
   :: ∀ row xs row' form
    . RL.RowToList row xs
-  => Internal.WrapRecord xs row () row'
+  => Internal.WrapRecord xs row row'
   => Newtype (form FormSpec) (Record row')
   => Record row
   -> form FormSpec
